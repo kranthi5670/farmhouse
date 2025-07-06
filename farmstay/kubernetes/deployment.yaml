@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: farmstay-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: farmstay
+  template:
+    metadata:
+      labels:
+        app: farmstay
+    spec:
+      containers:
+      - name: farmstay
+        image: your-dockerhub-username/farmstay:latest
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - configMapRef:
+            name: farmstay-config
+        - secretRef:
+            name: farmstay-secrets
+        volumeMounts:
+        - name: bookings
+          mountPath: /app/bookings.json
+          subPath: bookings.json
+        - name: promocodes
+          mountPath: /app/promocodes.csv
+          subPath: promocodes.csv
+      volumes:
+      - name: bookings
+        configMap:
+          name: farmstay-bookings
+      - name: promocodes
+        configMap:
+          name: farmstay-promocodes
