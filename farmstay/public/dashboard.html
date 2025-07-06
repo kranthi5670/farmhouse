@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bookings Dashboard</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"/>
+</head>
+<body>
+  <div class="container mt-5">
+    <h2>📋 Bookings Dashboard</h2>
+    <table class="table table-bordered mt-4" id="bookingsTable">
+      <thead>
+        <tr>
+          <th>Name</th><th>Email</th><th>Check-In</th><th>Check-Out</th><th>Guests</th><th>Amount</th><th>Invoice</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    fetch('http://localhost:5000/bookings')
+      .then(res => res.json())
+      .then(data => {
+        const tbody = document.querySelector("#bookingsTable tbody");
+        data.forEach(b => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${b.name}</td>
+            <td>${b.email}</td>
+            <td>${b.checkin}</td>
+            <td>${b.checkout}</td>
+            <td>${b.guests}</td>
+            <td>₹${b.amount}</td>
+            <td><a href="/invoice/${b.email}" target="_blank">Download</a></td>
+          `;
+          tbody.appendChild(row);
+        });
+      });
+  </script>
+</body>
+</html>

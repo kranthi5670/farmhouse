@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GreenOBird Farmstay Booking</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    body {
+      background: url('bg.jpg') no-repeat center center fixed;
+      background-size: cover;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .booking-form {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 30px;
+      max-width: 700px;
+      margin: 50px auto;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+    }
+    h2 {
+      text-align: center;
+      color: #28a745;
+      margin-bottom: 30px;
+    }
+    .form-group label {
+      font-weight: 600;
+    }
+    .summary-box {
+      background-color: #f0fff4;
+      padding: 15px;
+      margin-top: 20px;
+      border: 1px solid #c3e6cb;
+      border-radius: 5px;
+      font-weight: 600;
+    }
+    .promo-section {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-success {
+      width: 100%;
+      font-weight: bold;
+    }
+    .calendar-warning {
+      color: red;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+      .promo-section {
+        flex-direction: column;
+      }
+    }
+  </style>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</head>
+<body>
+  <div class="booking-form">
+    <h2>GreenOBird Farmstay Booking</h2>
+    <form id="bookingForm">
+      <div class="form-group">
+        <label for="name">Full Name</label>
+        <input required type="text" id="name" name="name" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input required type="email" id="email" name="email" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label for="phone">Mobile Number</label>
+        <input required type="tel" id="phone" name="phone" class="form-control" />
+      </div>
+      <div class="form-row">
+        <div class="form-group col-md-6">
+          <label for="checkin">Check-In</label>
+          <input required type="text" id="checkin" name="checkin" class="form-control" />
+          <small id="checkinWarn" class="calendar-warning"></small>
+        </div>
+        <div class="form-group col-md-6">
+          <label for="checkout">Check-Out</label>
+          <input required type="text" id="checkout" name="checkout" class="form-control" />
+          <small id="checkoutWarn" class="calendar-warning"></small>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="guests">Number of Guests</label>
+        <input required type="number" id="guests" name="guests" class="form-control" min="1" value="1" />
+      </div>
+      <div class="form-group">
+        <label for="promoCode">Promo Code</label>
+        <div class="promo-section">
+          <input type="text" id="promoCode" name="promoCode" class="form-control" placeholder="Enter promo code" />
+          <button type="button" id="applyPromoBtn" class="btn btn-success">Apply</button>
+        </div>
+      </div>
+      <div class="summary-box">
+        <p id="totalAmt">Total Amount: ₹0</p>
+        <p id="discountAmt">Discount: ₹0</p>
+        <p id="finalAmt">Amount to Pay (50%): ₹0</p>
+      </div>
+      <button type="submit" class="btn btn-success mt-4">Book Now</button>
+    </form>
+  </div>
+
+  <script>
+    let blockedDates = [];
+    let discountPercent = 0;
+
+    async function fetchBlockedDates() {
+      const res = await fetch('http://localhost:5000/booked-dates');
+      blockedDates = await res.json();
+      initializeCalendars();
+    }
+
+    function initializeCalendars() {
+      flatpickr("#checkin", {
+        dateFormat: "Y-m-d",
+        disable: blockedDates,
+        onChange: calculate
+      });
+
+      flatpickr("#checkout", {
+        dateFormat: "Y-m-d",
+        disable: blockedDates,
+        onChange: calculate
+      });
+    }
+
+    document.getElementById("applyPromoBtn").addEventListener("click", async function () {
+      const code = document.getElementById("promoCode").value.trim();
+      if (!code) return alert("Enter promo code");
+
+      try {
+        const res = await fetch("http://localhost:5000/validate-promo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+
+        if (data.valid) {
+          discountPercent = data.discount;
+          alert(`Promo Applied: ${discountPercent}% OFF`);
+          if (discountPercent === 100) {
+            document.getElementById("promoCode").disabled = true;
+          }
+        } else {
+          discountPercent = 0;
+          alert("Invalid Promo Code");
+        }
+        calculate();
+      } catch (err) {
+        alert("Error validating promo code");
+      }
+    });
+
+    function calculate() {
+      const checkin = document.getElementById("checkin").value;
+      const checkout = document.getElementById("checkout").value;
+      const guests = parseInt(document.getElementById("guests").value);
+
+      if (!checkin || !checkout || isNaN(guests)) return;
+
+      const checkinDate = new Date(checkin);
+      const checkoutDate = new Date(checkout);
+      const nights = (checkoutDate - checkinDate) / (1000 * 60 * 60 * 24);
+      if (nights <= 0) return;
+
+      const base = [5, 6, 0].includes(checkinDate.getDay()) ? 12000 : 10000;
+      const extra = guests > 10 ? (guests - 10) * 500 : 0;
+      const total = (base + extra) * nights;
+
+      const discount = (discountPercent / 100) * total;
+      const toPay = Math.round((total - discount) / 2);
+
+      document.getElementById("totalAmt").innerText = `Total Amount: ₹${total}`;
+      document.getElementById("discountAmt").innerText = `Discount: ₹${discount}`;
+      document.getElementById("finalAmt").innerText = `Amount to Pay (50%): ₹${toPay}`;
+    }
+
+    document.getElementById("bookingForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const data = {
+        name: document.getElementById("name").value,
+        email: document.getElementById("email").value,
+        phone: document.getElementById("phone").value,
+        checkin: document.getElementById("checkin").value,
+        checkout: document.getElementById("checkout").value,
+        guests: document.getElementById("guests").value,
+        promoCode: document.getElementById("promoCode").value.trim()
+      };
+
+      const checkinDate = new Date(data.checkin);
+      const checkoutDate = new Date(data.checkout);
+      const guests = parseInt(data.guests);
+
+      const nights = (checkoutDate - checkinDate) / (1000 * 60 * 60 * 24);
+      const base = [5, 6, 0].includes(checkinDate.getDay()) ? 12000 : 10000;
+      const extra = guests > 10 ? (guests - 10) * 500 : 0;
+      const total = (base + extra) * nights;
+      const discount = (discountPercent / 100) * total;
+      const toPay = Math.round((total - discount) / 2);
+
+      data.amount = toPay;
+      data.discount = discountPercent;
+
+      if (toPay === 0 || discountPercent === 100) {
+        const res = await fetch("http://localhost:5000/confirm-booking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.status === "success") {
+          alert("Booking successful with full discount!");
+          window.location.href = "/thankyou.html";
+        } else {
+          alert("Booking failed: " + result.message);
+        }
+        return;
+      }
+
+      const orderRes = await fetch("http://localhost:5000/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: toPay })
+      });
+      const order = await orderRes.json();
+
+      const options = {
+        key: "rzp_test_ZauhdnAkhhdGQn",
+        amount: order.amount,
+        currency: "INR",
+        name: "GreenOBird Farmstay",
+        description: "Booking Payment",
+        order_id: order.id,
+        handler: async function (response) {
+          data.razorpay_payment_id = response.razorpay_payment_id;
+          const confirmRes = await fetch("http://localhost:5000/confirm-booking", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+          });
+          const confirmData = await confirmRes.json();
+          if (confirmData.status === "success") {
+            alert("Booking successful!");
+            window.location.href = "/thankyou.html";
+          } else {
+            alert("Booking failed: " + confirmData.message);
+          }
+        },
+        prefill: {
+          name: data.name,
+          email: data.email,
+          contact: data.phone
+        },
+        theme: {
+          color: "#28a745"
+        }
+      };
+
+      const rzp = new Razorpay(options);
+      rzp.open();
+    });
+
+    fetchBlockedDates();
+  </script>
+</body>
+</html>
